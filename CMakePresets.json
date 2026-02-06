@@ -1,0 +1,61 @@
+{
+  "version": 4,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache"
+      }
+    },
+    {
+      "name": "perf",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/perf",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MAGUS2_ENABLE_PERF": "ON",
+        "MAGUS2_ENABLE_LTO": "ON",
+        "MAGUS2_USE_MOLD": "ON",
+        "BUILD_TESTING": "OFF"
+      }
+    },
+    {
+      "name": "tests",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/tests",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "MAGUS2_ENABLE_PERF": "OFF",
+        "MAGUS2_ENABLE_LTO": "OFF",
+        "MAGUS2_USE_MOLD": "OFF",
+        "BUILD_TESTING": "ON",
+        "MAGUS2_ENABLE_SANITIZERS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "perf",
+      "configurePreset": "perf"
+    },
+    {
+      "name": "tests",
+      "configurePreset": "tests"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "tests",
+      "configurePreset": "tests"
+    }
+  ]
+}
