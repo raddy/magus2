@@ -1,4 +1,5 @@
-add_library(magus2::deps INTERFACE)
+add_library(magus2_deps INTERFACE)
+add_library(magus2::deps ALIAS magus2_deps)
 
 # Placeholder for future dependencies. Example:
 # include(FetchContent)
