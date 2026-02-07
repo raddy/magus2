@@ -41,7 +41,7 @@
 
 #ifndef TLOG_NOFMTLOG
   #include <fmt/core.h>
-  #include <fmtlog.h>
+  #include <fmtlog/fmtlog.h>
 #endif
 #if defined(_MSC_VER) && defined(TLOG_TRACE_SOURCE_RDTSC)
   #include <intrin.h>
@@ -202,22 +202,7 @@ template<> struct fmt::formatter<tlog::snap> : fmt::formatter<fmt::string_view> 
 };
 
 namespace tlog {
-template <class... Args>
-TLOG_FORCE_INLINE void logd(fmt::string_view fmt_, Args&&... args) {
-  ::logd("[{}] " fmt_, ::tlog::snap_now(), std::forward<Args>(args)...);
-}
-template <class... Args>
-TLOG_FORCE_INLINE void logi(fmt::string_view fmt_, Args&&... args) {
-  ::logi("[{}] " fmt_, ::tlog::snap_now(), std::forward<Args>(args)...);
-}
-template <class... Args>
-TLOG_FORCE_INLINE void logw(fmt::string_view fmt_, Args&&... args) {
-  ::logw("[{}] " fmt_, ::tlog::snap_now(), std::forward<Args>(args)...);
-}
-template <class... Args>
-TLOG_FORCE_INLINE void loge(fmt::string_view fmt_, Args&&... args) {
-  ::loge("[{}] " fmt_, ::tlog::snap_now(), std::forward<Args>(args)...);
-}
+// Intentionally empty: TLOG* macros call fmtlog macros directly.
 } // namespace tlog
 
 #define TLOGD(fmt_, ...) logd("[{}] " fmt_, ::tlog::snap_now() __VA_OPT__(,) __VA_ARGS__)
@@ -227,13 +212,13 @@ TLOG_FORCE_INLINE void loge(fmt::string_view fmt_, Args&&... args) {
 #else
 namespace tlog {
 template <class... Args>
-TLOG_FORCE_INLINE void logd(std::string_view, Args&&...) {}
+TLOG_FORCE_INLINE void emitd(std::string_view, Args&&...) {}
 template <class... Args>
-TLOG_FORCE_INLINE void logi(std::string_view, Args&&...) {}
+TLOG_FORCE_INLINE void emiti(std::string_view, Args&&...) {}
 template <class... Args>
-TLOG_FORCE_INLINE void logw(std::string_view, Args&&...) {}
+TLOG_FORCE_INLINE void emitw(std::string_view, Args&&...) {}
 template <class... Args>
-TLOG_FORCE_INLINE void loge(std::string_view, Args&&...) {}
+TLOG_FORCE_INLINE void emite(std::string_view, Args&&...) {}
 } // namespace tlog
 
 #define TLOGD(fmt_, ...) ((void)0)

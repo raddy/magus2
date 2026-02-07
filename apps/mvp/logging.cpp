@@ -1,7 +1,8 @@
 #include "mvp/logging.hpp"
 
 #ifndef TLOG_NOFMTLOG
-#  include <fmtlog.h>
+#  include <fmtlog/fmtlog.h>
+#  include <fmtlog/fmtlog-inl.h>
 #endif
 
 #include <cstdio>

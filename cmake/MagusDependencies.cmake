@@ -1,12 +1,6 @@
 add_library(magus2_deps INTERFACE)
 add_library(magus2::deps ALIAS magus2_deps)
 
-# Placeholder for future dependencies. Example:
-# include(FetchContent)
-# FetchContent_Declare(fmt
-#   GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-#   GIT_TAG 10.2.1
-#   GIT_SHALLOW TRUE
-# )
-# FetchContent_MakeAvailable(fmt)
-# target_link_libraries(magus2::deps INTERFACE fmt::fmt)
+if(EXISTS "${PROJECT_SOURCE_DIR}/external/fmtlog/fmt/CMakeLists.txt")
+  add_subdirectory(${PROJECT_SOURCE_DIR}/external/fmtlog/fmt external/fmt_build EXCLUDE_FROM_ALL)
+endif()

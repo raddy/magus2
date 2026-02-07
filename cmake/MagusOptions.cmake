@@ -14,7 +14,6 @@ option(MAGUS2_USE_MOLD "Use mold linker when available" OFF)
 option(MAGUS2_ENABLE_FMTLOG_TRACE "Enable tlog+fmtlog trace logging (requires fmt headers)" OFF)
 
 set(MAGUS2_CPU_TUNING "native" CACHE STRING "CPU tuning (native or a specific arch)")
-set(MAGUS2_FMT_INCLUDE_DIR "" CACHE PATH "Path containing fmt/core.h and fmt/format.h when MAGUS2_ENABLE_FMTLOG_TRACE=ON")
 
 if(MAGUS2_DISABLE_SIMD)
   target_compile_definitions(magus2_options INTERFACE MAGUS2_DISABLE_SIMD)
