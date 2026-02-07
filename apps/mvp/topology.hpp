@@ -5,21 +5,21 @@
 #include <infra/topology/spec.hpp>
 
 #include <cstddef>
-#include <cstdint>
 
 namespace magus2::mvp {
 
 struct MvpConfig {
-  std::uint32_t md_core {0};
-  std::uint32_t strat_core {1};
-  std::uint32_t or_core {2};
+  infra::u32 md_core {0};
+  infra::u32 strat_core {1};
+  infra::u32 or_core {2};
 
+  std::size_t ingress_depth {64};
   std::size_t tick_depth {64};
   std::size_t order_depth {32};
   std::size_t ack_depth {32};
 
-  std::uint64_t md_tick_interval_us {50};
-  std::uint64_t order_every_n_ticks {8};
+  infra::u64 tick_interval_us {50};
+  infra::u64 order_every_n_ticks {8};
 };
 
 [[nodiscard]] inline infra::topology::ContractId to_contract_id(Contract contract) {
@@ -40,10 +40,20 @@ inline infra::topology::Topology make_topology(const MvpConfig& cfg) {
   Topology topology;
 
   topology.nodes.push_back(NodeSpec {
+      .id = to_node_id(NodeId::Driver),
+      .name = "driver",
+      .core = 0,
+      .ports = {{"tick_tx", Direction::Tx, to_contract_id(Contract::Tick), true}},
+  });
+
+  topology.nodes.push_back(NodeSpec {
       .id = to_node_id(NodeId::Md),
       .name = "md",
       .core = cfg.md_core,
-      .ports = {{"tick_tx", Direction::Tx, to_contract_id(Contract::Tick), true}},
+      .ports = {
+          {"tick_rx", Direction::Rx, to_contract_id(Contract::Tick), true},
+          {"tick_tx", Direction::Tx, to_contract_id(Contract::Tick), true},
+      },
   });
 
   topology.nodes.push_back(NodeSpec {
@@ -65,6 +75,15 @@ inline infra::topology::Topology make_topology(const MvpConfig& cfg) {
           {"order_rx", Direction::Rx, to_contract_id(Contract::OrderReq), true},
           {"ack_tx", Direction::Tx, to_contract_id(Contract::OrderAck), true},
       },
+  });
+
+  topology.edges.push_back(EdgeSpec {
+      .from = to_node_id(NodeId::Driver),
+      .from_port = "tick_tx",
+      .to = to_node_id(NodeId::Md),
+      .to_port = "tick_rx",
+      .contract = to_contract_id(Contract::Tick),
+      .depth = cfg.ingress_depth,
   });
 
   topology.edges.push_back(EdgeSpec {

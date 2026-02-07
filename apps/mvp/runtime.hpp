@@ -3,44 +3,32 @@
 #include "mvp/topology.hpp"
 
 #include <chrono>
-#include <cstdint>
 #include <memory>
 #include <string>
 
 namespace magus2::mvp {
 
 struct StatsSnapshot {
-  std::uint64_t md_ticks_sent {0};
-  std::uint64_t strat_ticks_seen {0};
-  std::uint64_t strat_orders_sent {0};
-  std::uint64_t strat_acks_seen {0};
-  std::uint64_t or_orders_seen {0};
-  std::uint64_t or_acks_sent {0};
+  infra::u64 md_ticks_sent {0};
+  infra::u64 strat_ticks_seen {0};
+  infra::u64 strat_orders_sent {0};
+  infra::u64 strat_acks_seen {0};
+  infra::u64 or_orders_seen {0};
+  infra::u64 or_acks_sent {0};
 
-  std::uint64_t tick_one_way_count {0};
-  std::uint64_t tick_one_way_sum_ns {0};
-  std::uint64_t tick_one_way_max_ns {0};
+  infra::u64 tick_one_way_count {0};
+  infra::u64 tick_one_way_sum_ns {0};
+  infra::u64 tick_one_way_max_ns {0};
 
-  std::uint64_t order_rtt_count {0};
-  std::uint64_t order_rtt_sum_ns {0};
-  std::uint64_t order_rtt_max_ns {0};
+  infra::u64 order_rtt_count {0};
+  infra::u64 order_rtt_sum_ns {0};
+  infra::u64 order_rtt_max_ns {0};
 
-  std::uint64_t trace_ticks_seen {0};
-  std::uint64_t trace_acks_seen {0};
+  infra::u64 trace_ticks_seen {0};
+  infra::u64 trace_acks_seen {0};
 
-  [[nodiscard]] double tick_one_way_avg_ns() const noexcept {
-    if (tick_one_way_count == 0U) {
-      return 0.0;
-    }
-    return static_cast<double>(tick_one_way_sum_ns) / static_cast<double>(tick_one_way_count);
-  }
-
-  [[nodiscard]] double order_rtt_avg_ns() const noexcept {
-    if (order_rtt_count == 0U) {
-      return 0.0;
-    }
-    return static_cast<double>(order_rtt_sum_ns) / static_cast<double>(order_rtt_count);
-  }
+  [[nodiscard]] double tick_one_way_avg_ns() const noexcept;
+  [[nodiscard]] double order_rtt_avg_ns() const noexcept;
 };
 
 struct RunResult {
@@ -59,6 +47,8 @@ public:
   bool start();
   void stop();
   void join();
+
+  bool try_push_tick(const Tick& tick) noexcept;
 
   [[nodiscard]] StatsSnapshot snapshot() const;
   [[nodiscard]] const std::string& last_error() const noexcept;

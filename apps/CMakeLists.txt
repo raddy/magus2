@@ -2,6 +2,8 @@ add_executable(magus2_hello hello/main.cpp)
 target_link_libraries(magus2_hello PRIVATE magus2_lib)
 
 add_library(magus2_mvp_app
+  mvp/logging.cpp
+  mvp/nodes.cpp
   mvp/runtime.cpp
 )
 target_include_directories(magus2_mvp_app

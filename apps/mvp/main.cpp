@@ -1,39 +1,32 @@
+#include <mvp/logging.hpp>
 #include <mvp/runtime.hpp>
 
 #include <chrono>
-#include <cstdint>
-#include <cstdio>
 #include <iostream>
-
-#ifndef TLOG_NOFMTLOG
-#  include <fmtlog.h>
-#endif
 
 int main() {
   using namespace magus2::mvp;
 
-#ifndef TLOG_NOFMTLOG
-  fmtlog::setLogFile(stdout, false);
-  fmtlog::setLogLevel(fmtlog::DBG);
-  fmtlog::setHeaderPattern("{HMSf} {l}[{t}] ");
-  fmtlog::startPollingThread(1000000);
-#endif
+  logging::start();
 
   MvpConfig config;
+  config.ingress_depth = 64;
   config.tick_depth = 64;
   config.order_depth = 32;
   config.ack_depth = 32;
-  config.md_tick_interval_us = 50;
+  config.tick_interval_us = 50;
   config.order_every_n_ticks = 8;
 
   const RunResult result = run_for(std::chrono::milliseconds(500), config);
 
   if (!result.built) {
     std::cerr << "mvp topology build failed: " << result.error << '\n';
+    logging::stop();
     return 1;
   }
   if (!result.started) {
     std::cerr << "mvp runtime start failed: " << result.error << '\n';
+    logging::stop();
     return 1;
   }
 
@@ -53,18 +46,11 @@ int main() {
             << '\n';
 
   if (!flow_looks_valid(result.stats)) {
-#ifndef TLOG_NOFMTLOG
-    fmtlog::stopPollingThread();
-    fmtlog::poll(true);
-#endif
     std::cerr << "mvp flow validation failed\n";
+    logging::stop();
     return 2;
   }
 
-#ifndef TLOG_NOFMTLOG
-  fmtlog::stopPollingThread();
-  fmtlog::poll(true);
-#endif
-
+  logging::stop();
   return 0;
 }

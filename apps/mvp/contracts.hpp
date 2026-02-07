@@ -1,47 +1,56 @@
 #pragma once
 
-#include <cstdint>
+#include <infra/types/short_types.hpp>
+
 #include <type_traits>
 
 #include <tlog/tlog.hpp>
 
 namespace magus2::mvp {
 
-enum class Contract : std::uint16_t {
+using infra::i32;
+using infra::i64;
+using infra::u8;
+using infra::u16;
+using infra::u32;
+using infra::u64;
+
+enum class Contract : u16 {
   Tick = 1,
   OrderReq = 2,
   OrderAck = 3,
 };
 
-enum class NodeId : std::uint16_t {
-  Md = 1,
-  Strat = 2,
-  Or = 3,
+enum class NodeId : u16 {
+  Driver = 1,
+  Md = 2,
+  Strat = 3,
+  Or = 4,
 };
 
 struct Tick {
-  std::uint64_t seq;
-  std::uint64_t ts_ns;
+  u64 seq;
+  u64 ts_ns;
   tlog::carrier ctx;
 };
 
 struct OrderReq {
-  std::uint32_t order_id;
-  std::uint32_t instr_id;
-  std::uint64_t send_ts_ns;
+  u32 order_id;
+  u32 instr_id;
+  u64 send_ts_ns;
   tlog::carrier ctx;
-  std::int64_t px;
-  std::int32_t qty;
-  std::uint8_t side;
-  std::uint8_t pad[3];
+  i64 px;
+  i32 qty;
+  u8 side;
+  u8 pad[3];
 };
 
 struct OrderAck {
-  std::uint32_t order_id;
-  std::uint64_t origin_ts_ns;
+  u32 order_id;
+  u64 origin_ts_ns;
   tlog::carrier ctx;
-  std::uint8_t status;
-  std::uint8_t pad[3];
+  u8 status;
+  u8 pad[3];
 };
 
 static_assert(std::is_standard_layout_v<Tick> && std::is_trivially_copyable_v<Tick>);
