@@ -11,8 +11,10 @@ option(MAGUS2_ENABLE_WARNINGS "Enable warnings" ON)
 option(MAGUS2_ENABLE_SANITIZERS "Enable ASan/UBSan" OFF)
 option(MAGUS2_DISABLE_SIMD "Disable SIMD" OFF)
 option(MAGUS2_USE_MOLD "Use mold linker when available" OFF)
+option(MAGUS2_ENABLE_FMTLOG_TRACE "Enable tlog+fmtlog trace logging (requires fmt headers)" OFF)
 
 set(MAGUS2_CPU_TUNING "native" CACHE STRING "CPU tuning (native or a specific arch)")
+set(MAGUS2_FMT_INCLUDE_DIR "" CACHE PATH "Path containing fmt/core.h and fmt/format.h when MAGUS2_ENABLE_FMTLOG_TRACE=ON")
 
 if(MAGUS2_DISABLE_SIMD)
   target_compile_definitions(magus2_options INTERFACE MAGUS2_DISABLE_SIMD)
@@ -32,9 +34,11 @@ if(MAGUS2_ENABLE_PERF)
     -Ofast
     -march=${MAGUS2_CPU_TUNING}
     -mtune=${MAGUS2_CPU_TUNING}
-    -mbmi2
     -funroll-loops
   )
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64|i[3-6]86)$")
+    target_compile_options(magus2_options INTERFACE -mbmi2)
+  endif()
   if(NOT APPLE)
     target_compile_options(magus2_options INTERFACE -fno-plt)
   endif()
