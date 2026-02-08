@@ -11,7 +11,6 @@ option(MAGUS2_ENABLE_WARNINGS "Enable warnings" ON)
 option(MAGUS2_ENABLE_SANITIZERS "Enable ASan/UBSan" OFF)
 option(MAGUS2_DISABLE_SIMD "Disable SIMD" OFF)
 option(MAGUS2_USE_MOLD "Use mold linker when available" OFF)
-option(MAGUS2_ENABLE_FMTLOG_TRACE "Enable tlog+fmtlog trace logging (requires fmt headers)" OFF)
 
 set(MAGUS2_CPU_TUNING "native" CACHE STRING "CPU tuning (native or a specific arch)")
 

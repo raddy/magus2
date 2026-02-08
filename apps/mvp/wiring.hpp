@@ -1,138 +1,181 @@
 #pragma once
 
 #include "mvp/contracts.hpp"
+#include "mvp/nodes.hpp"
+#include "mvp/topology.hpp"
 
-#include <infra/topology/ports.hpp>
-#include <infra/topology/spec.hpp>
+#include <infra/topology/engine.hpp>
+#include <infra/topology/wire.hpp>
 
+#include <array>
+#include <atomic>
 #include <memory>
 #include <optional>
-#include <rigtorp/rigtorp.hpp>
-#include <string>
-#include <string_view>
+#include <tuple>
+#include <utility>
 #include <vector>
 
-namespace magus2::mvp::wiring {
+namespace magus2::mvp::assembly {
 
-struct QueueBase {
-  virtual ~QueueBase() = default;
+// Layer boundary:
+// - infra::topology::* below is generic queue/runtime machinery.
+// - this file is MVP-specific assembly: concrete node roles, ports, and worker registration.
+
+using QueueStore = infra::topology::QueueStore<
+    infra::topology::ContractBinding<Contract::Tick, TickEnvelope>,
+    infra::topology::ContractBinding<Contract::OrderReq, OrderReqEnvelope>,
+    infra::topology::ContractBinding<Contract::OrderAck, OrderAckEnvelope>>;
+
+using Engine = infra::topology::Engine<QueueStore>;
+
+[[nodiscard]] inline auto ingress_bindings() {
+  return std::make_tuple(infra::topology::tx_binding(
+      &IngressNodePorts::tick_tx, to_node_id(NodeId::Ingress), "ingress_tick_tx", to_contract_id(Contract::Tick)));
+}
+
+[[nodiscard]] inline auto md_bindings() {
+  return std::make_tuple(
+      infra::topology::rx_binding(
+          &MdNodePorts::tick_rx, to_node_id(NodeId::Md), "tick_rx", to_contract_id(Contract::Tick)),
+      infra::topology::tx_binding(
+          &MdNodePorts::tick_tx, to_node_id(NodeId::Md), "tick_tx", to_contract_id(Contract::Tick)));
+}
+
+[[nodiscard]] inline auto strat_bindings() {
+  return std::make_tuple(
+      infra::topology::rx_binding(
+          &StrategyNodePorts::tick_rx, to_node_id(NodeId::Strat), "tick_rx", to_contract_id(Contract::Tick)),
+      infra::topology::tx_binding(
+          &StrategyNodePorts::order_tx, to_node_id(NodeId::Strat), "order_tx", to_contract_id(Contract::OrderReq)),
+      infra::topology::rx_binding(
+          &StrategyNodePorts::ack_rx, to_node_id(NodeId::Strat), "ack_rx", to_contract_id(Contract::OrderAck)));
+}
+
+[[nodiscard]] inline auto or_bindings() {
+  return std::make_tuple(
+      infra::topology::rx_binding(
+          &OrderRouterNodePorts::order_rx, to_node_id(NodeId::Or), "order_rx", to_contract_id(Contract::OrderReq)),
+      infra::topology::tx_binding(
+          &OrderRouterNodePorts::ack_tx, to_node_id(NodeId::Or), "ack_tx", to_contract_id(Contract::OrderAck)));
+}
+
+[[nodiscard]] inline bool bind_ports(
+    Engine& engine,
+    IngressNodePorts& ingress,
+    MdNodePorts& md,
+    StrategyNodePorts& strat,
+    OrderRouterNodePorts& order_router) {
+  return infra::topology::bind_all(engine, ingress, ingress_bindings())
+         && infra::topology::bind_all(engine, md, md_bindings())
+         && infra::topology::bind_all(engine, strat, strat_bindings())
+         && infra::topology::bind_all(engine, order_router, or_bindings());
+}
+
+[[nodiscard]] inline u16 trace_idx_for_node(const Engine& engine, NodeId node_id) {
+  const auto core = engine.core(to_node_id(node_id));
+  return static_cast<u16>(core.value_or(0));
+}
+
+struct AppPortBundle {
+  IngressNodePorts ingress;
+  MdNodePorts md;
+  StrategyNodePorts strat;
+  OrderRouterNodePorts order_router;
 };
 
-template<typename T>
-struct QueueStorage final : QueueBase {
-  explicit QueueStorage(std::size_t depth)
-      : queue(depth) {}
+[[nodiscard]] inline bool bind_ports(Engine& engine, AppPortBundle& ports) {
+  return bind_ports(engine, ports.ingress, ports.md, ports.strat, ports.order_router);
+}
 
-  rigtorp::SPSCQueue<T> queue;
-};
+class NodeRegistry {
+public:
+  class NodeRunner {
+  public:
+    virtual ~NodeRunner() = default;
+    virtual void run() = 0;
+  };
 
-struct QueueStore {
-  std::vector<std::unique_ptr<QueueBase>> storage;
+  template<typename NodeT, typename... Args>
+  NodeRunner* emplace(Args&&... args) {
+    auto runner = std::make_unique<NodeRunnerImpl<NodeT>>(std::forward<Args>(args)...);
+    NodeRunner* ptr = runner.get();
+    runners_.push_back(std::move(runner));
+    return ptr;
+  }
 
-  bool build(const infra::topology::Topology& topology, std::string& error) {
-    storage.clear();
-    storage.reserve(topology.edges.size());
+private:
+  template<typename NodeT>
+  class NodeRunnerImpl final : public NodeRunner {
+  public:
+    template<typename... Args>
+    explicit NodeRunnerImpl(Args&&... args)
+        : node_(std::forward<Args>(args)...) {}
 
-    for (const infra::topology::EdgeSpec& edge : topology.edges) {
-      if (edge.depth < 2U) {
-        error = "edge depth must be >= 2";
-        return false;
-      }
-
-      switch (static_cast<Contract>(edge.contract)) {
-        case Contract::Tick:
-          storage.push_back(std::make_unique<QueueStorage<Tick>>(edge.depth));
-          break;
-        case Contract::OrderReq:
-          storage.push_back(std::make_unique<QueueStorage<OrderReq>>(edge.depth));
-          break;
-        case Contract::OrderAck:
-          storage.push_back(std::make_unique<QueueStorage<OrderAck>>(edge.depth));
-          break;
-      }
+    void run() override {
+      node_.run();
     }
 
-    return true;
-  }
+  private:
+    NodeT node_;
+  };
 
-  template<typename T>
-  [[nodiscard]] rigtorp::SPSCQueue<T>* queue_as(std::size_t edge_index) {
-    auto* typed = dynamic_cast<QueueStorage<T>*>(storage[edge_index].get());
-    return typed == nullptr ? nullptr : &typed->queue;
-  }
+  std::vector<std::unique_ptr<NodeRunner>> runners_;
 };
 
-template<typename Port>
-struct PortMsgType;
+struct NodeFactoryContext {
+  Engine& engine;
+  std::atomic<bool>& running;
+  RuntimeCounters& stats;
+  const MvpConfig& config;
 
-template<typename T>
-struct PortMsgType<infra::topology::TxPort<T>> {
-  using type = T;
+  const AppPortBundle& ports;
+  NodeRegistry& registry;
 };
 
-template<typename T>
-struct PortMsgType<infra::topology::RxPort<T>> {
-  using type = T;
-};
+using NodeFactoryFn = bool (*)(NodeFactoryContext&);
 
-template<typename PortT>
-[[nodiscard]] bool bind_tx_port(PortT& port,
-    QueueStore& queue_store,
-    const infra::topology::Topology& topology,
-    NodeId node,
-    std::string_view port_name,
-    Contract contract,
-    std::string& error) {
-  const auto edge_index = infra::topology::find_edge_index(
-      topology,
-      to_node_id(node),
-      port_name,
-      infra::topology::Direction::Tx,
-      to_contract_id(contract));
-  if (!edge_index) {
-    error = "missing tx edge binding for node=" + std::to_string(static_cast<unsigned>(node));
-    return false;
-  }
+[[nodiscard]] inline bool build_md(NodeFactoryContext& ctx) {
+  auto* runner = ctx.registry.emplace<MdNode>(ctx.ports.md, ctx.running, ctx.stats, trace_idx_for_node(ctx.engine, NodeId::Md));
+  return ctx.engine.add_worker(to_node_id(NodeId::Md), "md", [runner]() { runner->run(); });
+}
 
-  using Msg = typename PortMsgType<PortT>::type;
-  port.q = queue_store.queue_as<Msg>(*edge_index);
-  if (!port.present()) {
-    error = "tx queue type mismatch for node=" + std::to_string(static_cast<unsigned>(node));
-    return false;
+[[nodiscard]] inline bool build_strat(NodeFactoryContext& ctx) {
+  auto* runner = ctx.registry.emplace<StratNode>(
+      ctx.ports.strat,
+      ctx.running,
+      ctx.stats,
+      ctx.config.order_every_n_ticks,
+      trace_idx_for_node(ctx.engine, NodeId::Strat));
+  return ctx.engine.add_worker(to_node_id(NodeId::Strat), "strat", [runner]() { runner->run(); });
+}
+
+[[nodiscard]] inline bool build_or(NodeFactoryContext& ctx) {
+  auto* runner = ctx.registry.emplace<OrNode>(
+      ctx.ports.order_router, ctx.running, ctx.stats, trace_idx_for_node(ctx.engine, NodeId::Or));
+  return ctx.engine.add_worker(to_node_id(NodeId::Or), "or", [runner]() { runner->run(); });
+}
+
+[[nodiscard]] inline bool construct_nodes_and_register(NodeFactoryContext& ctx) {
+  struct FactorySpec {
+    NodeId node_id;
+    NodeFactoryFn factory;
+  };
+
+  constexpr std::array<FactorySpec, 3> kFactories {
+      FactorySpec {.node_id = NodeId::Md, .factory = &build_md},
+      FactorySpec {.node_id = NodeId::Strat, .factory = &build_strat},
+      FactorySpec {.node_id = NodeId::Or, .factory = &build_or},
+  };
+
+  for (const FactorySpec& spec : kFactories) {
+    if (!ctx.engine.core(to_node_id(spec.node_id)).has_value()) {
+      continue;
+    }
+    if (spec.factory == nullptr || !spec.factory(ctx)) {
+      return false;
+    }
   }
   return true;
 }
 
-template<typename PortT>
-[[nodiscard]] bool bind_rx_port(PortT& port,
-    QueueStore& queue_store,
-    const infra::topology::Topology& topology,
-    NodeId node,
-    std::string_view port_name,
-    Contract contract,
-    std::string& error) {
-  const auto edge_index = infra::topology::find_edge_index(
-      topology,
-      to_node_id(node),
-      port_name,
-      infra::topology::Direction::Rx,
-      to_contract_id(contract));
-  if (!edge_index) {
-    error = "missing rx edge binding for node=" + std::to_string(static_cast<unsigned>(node));
-    return false;
-  }
-
-  using Msg = typename PortMsgType<PortT>::type;
-  port.q = queue_store.queue_as<Msg>(*edge_index);
-  if (!port.present()) {
-    error = "rx queue type mismatch for node=" + std::to_string(static_cast<unsigned>(node));
-    return false;
-  }
-  return true;
-}
-
-[[nodiscard]] inline infra::u16 trace_thread_idx(NodeId node) noexcept {
-  return static_cast<infra::u16>(node);
-}
-
-}  // namespace magus2::mvp::wiring
+}  // namespace magus2::mvp::assembly

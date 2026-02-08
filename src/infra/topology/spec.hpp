@@ -45,6 +45,40 @@ struct Topology {
   std::vector<EdgeSpec> edges;
 };
 
+[[nodiscard]] inline PortSpec rx_port(std::string_view name, ContractId contract, bool required = true) {
+  return PortSpec {.name = name, .direction = Direction::Rx, .contract = contract, .required = required};
+}
+
+[[nodiscard]] inline PortSpec tx_port(std::string_view name, ContractId contract, bool required = true) {
+  return PortSpec {.name = name, .direction = Direction::Tx, .contract = contract, .required = required};
+}
+
+[[nodiscard]] inline NodeSpec node_spec(
+    NodeId id, std::string_view name, std::uint32_t core, std::initializer_list<PortSpec> ports) {
+  return NodeSpec {.id = id, .name = name, .core = core, .ports = std::vector<PortSpec>(ports)};
+}
+
+[[nodiscard]] inline EdgeSpec edge_spec(NodeId from,
+    std::string_view from_port,
+    NodeId to,
+    std::string_view to_port,
+    ContractId contract,
+    std::size_t depth) {
+  return EdgeSpec {
+      .from = from,
+      .from_port = from_port,
+      .to = to,
+      .to_port = to_port,
+      .contract = contract,
+      .depth = depth,
+  };
+}
+
+[[nodiscard]] inline Topology make_topology(
+    std::initializer_list<NodeSpec> nodes, std::initializer_list<EdgeSpec> edges) {
+  return Topology {.nodes = std::vector<NodeSpec>(nodes), .edges = std::vector<EdgeSpec>(edges)};
+}
+
 [[nodiscard]] inline std::optional<std::size_t> find_edge_index(
     const Topology& topology, NodeId node, std::string_view port_name, Direction direction, ContractId contract) {
   for (std::size_t i = 0; i < topology.edges.size(); ++i) {

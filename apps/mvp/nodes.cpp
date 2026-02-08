@@ -4,7 +4,6 @@
 #include <infra/topology/runtime.hpp>
 
 namespace magus2::mvp {
-namespace detail {
 
 inline void update_max(std::atomic<u64>& target, u64 value) noexcept {
   u64 current = target.load(std::memory_order_relaxed);
@@ -16,9 +15,7 @@ inline bool has_trace_id(const tlog::carrier& carrier) noexcept {
   return carrier.c.tid.hi != 0U || carrier.c.tid.lo != 0U;
 }
 
-}  // namespace detail
-
-MdNode::MdNode(MdPorts ports, std::atomic<bool>& running, RuntimeStats& stats, u16 trace_thread_idx)
+MdNode::MdNode(MdNodePorts ports, std::atomic<bool>& running, RuntimeCounters& stats, u16 trace_thread_idx)
     : ports_(ports)
     , running_(running)
     , stats_(stats)
@@ -30,11 +27,11 @@ void MdNode::run() {
   while (running_.load(std::memory_order_relaxed)) {
     bool processed = false;
 
-    Tick tick {};
+    TickEnvelope tick {};
     while (ports_.tick_rx.try_recv(tick)) {
       processed = true;
 
-      if (detail::has_trace_id(tick.ctx)) {
+      if (has_trace_id(tick.ctx)) {
         infra::trace::AdoptScope adopt {tick.ctx};
         infra::trace::SpanScope span {};
         tick.ctx = infra::trace::carry();
@@ -60,7 +57,11 @@ void MdNode::run() {
 }
 
 StratNode::StratNode(
-    StratPorts ports, std::atomic<bool>& running, RuntimeStats& stats, u64 order_every_n_ticks, u16 trace_thread_idx)
+    StrategyNodePorts ports,
+    std::atomic<bool>& running,
+    RuntimeCounters& stats,
+    u64 order_every_n_ticks,
+    u16 trace_thread_idx)
     : ports_(ports)
     , running_(running)
     , stats_(stats)
@@ -76,7 +77,7 @@ void StratNode::run() {
   while (running_.load(std::memory_order_relaxed)) {
     bool processed = false;
 
-    Tick tick {};
+    TickEnvelope tick {};
     while (ports_.tick_rx.try_recv(tick)) {
       infra::trace::AdoptScope adopt {tick.ctx};
       infra::trace::SpanScope span {};
@@ -86,7 +87,7 @@ void StratNode::run() {
       processed = true;
       stats_.strat_ticks_seen.fetch_add(1, std::memory_order_relaxed);
 
-      if (detail::has_trace_id(tick.ctx)) {
+      if (has_trace_id(tick.ctx)) {
         stats_.trace_ticks_seen.fetch_add(1, std::memory_order_relaxed);
       }
 
@@ -94,14 +95,14 @@ void StratNode::run() {
         const u64 one_way_ns = now_ns - tick.ts_ns;
         stats_.tick_one_way_count.fetch_add(1, std::memory_order_relaxed);
         stats_.tick_one_way_sum_ns.fetch_add(one_way_ns, std::memory_order_relaxed);
-        detail::update_max(stats_.tick_one_way_max_ns, one_way_ns);
+        update_max(stats_.tick_one_way_max_ns, one_way_ns);
       }
 
       if ((tick_count % order_every_n_ticks_) == 0U) {
         infra::trace::ingress_order_id(static_cast<u64>(order_id + 1U));
         infra::trace::SpanScope order_span {};
 
-        const OrderReq req {
+        const OrderReqEnvelope req {
             .order_id = ++order_id,
             .instr_id = 1,
             .send_ts_ns = now_ns,
@@ -122,7 +123,7 @@ void StratNode::run() {
       }
     }
 
-    OrderAck ack {};
+    OrderAckEnvelope ack {};
     while (ports_.ack_rx.try_recv(ack)) {
       infra::trace::AdoptScope adopt {ack.ctx};
       infra::trace::SpanScope span {};
@@ -131,7 +132,7 @@ void StratNode::run() {
       processed = true;
       stats_.strat_acks_seen.fetch_add(1, std::memory_order_relaxed);
 
-      if (detail::has_trace_id(ack.ctx)) {
+      if (has_trace_id(ack.ctx)) {
         stats_.trace_acks_seen.fetch_add(1, std::memory_order_relaxed);
       }
 
@@ -139,7 +140,7 @@ void StratNode::run() {
         const u64 rtt_ns = now_ns - ack.origin_ts_ns;
         stats_.order_rtt_count.fetch_add(1, std::memory_order_relaxed);
         stats_.order_rtt_sum_ns.fetch_add(rtt_ns, std::memory_order_relaxed);
-        detail::update_max(stats_.order_rtt_max_ns, rtt_ns);
+        update_max(stats_.order_rtt_max_ns, rtt_ns);
       }
     }
 
@@ -149,7 +150,7 @@ void StratNode::run() {
   }
 }
 
-OrNode::OrNode(OrPorts ports, std::atomic<bool>& running, RuntimeStats& stats, u16 trace_thread_idx)
+OrNode::OrNode(OrderRouterNodePorts ports, std::atomic<bool>& running, RuntimeCounters& stats, u16 trace_thread_idx)
     : ports_(ports)
     , running_(running)
     , stats_(stats)
@@ -161,7 +162,7 @@ void OrNode::run() {
   while (running_.load(std::memory_order_relaxed)) {
     bool processed = false;
 
-    OrderReq req {};
+    OrderReqEnvelope req {};
     while (ports_.order_rx.try_recv(req)) {
       infra::trace::AdoptScope adopt {req.ctx};
       infra::trace::SpanScope span {};
@@ -169,7 +170,7 @@ void OrNode::run() {
       processed = true;
       stats_.or_orders_seen.fetch_add(1, std::memory_order_relaxed);
 
-      const OrderAck ack {
+      const OrderAckEnvelope ack {
           .order_id = req.order_id,
           .origin_ts_ns = req.send_ts_ns,
           .ctx = infra::trace::carry(),

@@ -1,12 +1,17 @@
 #pragma once
 
+#include "infra/memory/arena.hpp"
+
 #include <rigtorp/rigtorp.hpp>
 
 namespace magus2::infra::topology {
 
 template<typename T>
+using SpscQueue = rigtorp::SPSCQueue<T, memory::ArenaAllocator<T>>;
+
+template<typename T>
 struct RxPort {
-  rigtorp::SPSCQueue<T>* q {nullptr};
+  SpscQueue<T>* q {nullptr};
 
   [[nodiscard]] bool present() const noexcept { return q != nullptr; }
 
@@ -26,7 +31,7 @@ struct RxPort {
 
 template<typename T>
 struct TxPort {
-  rigtorp::SPSCQueue<T>* q {nullptr};
+  SpscQueue<T>* q {nullptr};
 
   [[nodiscard]] bool present() const noexcept { return q != nullptr; }
 
@@ -37,5 +42,11 @@ struct TxPort {
     return q->try_push(msg);
   }
 };
+
+template<typename T>
+using Inbox = RxPort<T>;
+
+template<typename T>
+using Outbox = TxPort<T>;
 
 }  // namespace magus2::infra::topology

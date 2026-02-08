@@ -1,83 +1,79 @@
 #pragma once
 
 #include "mvp/contracts.hpp"
+#include "mvp/stats.hpp"
 
 #include <infra/topology/ports.hpp>
 
-#include <atomic>
-
 namespace magus2::mvp {
 
-struct RuntimeStats {
-  std::atomic<u64> md_ticks_sent {0};
-  std::atomic<u64> strat_ticks_seen {0};
-  std::atomic<u64> strat_orders_sent {0};
-  std::atomic<u64> strat_acks_seen {0};
-  std::atomic<u64> or_orders_seen {0};
-  std::atomic<u64> or_acks_sent {0};
+template<typename Envelope>
+using Inbox = infra::topology::Inbox<Envelope>;
 
-  std::atomic<u64> tick_one_way_count {0};
-  std::atomic<u64> tick_one_way_sum_ns {0};
-  std::atomic<u64> tick_one_way_max_ns {0};
+template<typename Envelope>
+using Outbox = infra::topology::Outbox<Envelope>;
 
-  std::atomic<u64> order_rtt_count {0};
-  std::atomic<u64> order_rtt_sum_ns {0};
-  std::atomic<u64> order_rtt_max_ns {0};
-
-  std::atomic<u64> trace_ticks_seen {0};
-  std::atomic<u64> trace_acks_seen {0};
+// App-specific boundary: these bundles name concrete node roles and bind generic
+// infra inbox/outbox endpoints to concrete envelope contracts.
+struct IngressNodePorts {
+  Outbox<TickEnvelope> tick_tx;
 };
 
-struct MdPorts {
-  infra::topology::RxPort<Tick> tick_rx;
-  infra::topology::TxPort<Tick> tick_tx;
+struct MdNodePorts {
+  Inbox<TickEnvelope> tick_rx;
+  Outbox<TickEnvelope> tick_tx;
 };
 
-struct StratPorts {
-  infra::topology::RxPort<Tick> tick_rx;
-  infra::topology::TxPort<OrderReq> order_tx;
-  infra::topology::RxPort<OrderAck> ack_rx;
+struct StrategyNodePorts {
+  Inbox<TickEnvelope> tick_rx;
+  Outbox<OrderReqEnvelope> order_tx;
+  Inbox<OrderAckEnvelope> ack_rx;
 };
 
-struct OrPorts {
-  infra::topology::RxPort<OrderReq> order_rx;
-  infra::topology::TxPort<OrderAck> ack_tx;
+struct OrderRouterNodePorts {
+  Inbox<OrderReqEnvelope> order_rx;
+  Outbox<OrderAckEnvelope> ack_tx;
 };
 
 class MdNode {
 public:
-  MdNode(MdPorts ports, std::atomic<bool>& running, RuntimeStats& stats, u16 trace_thread_idx);
+  MdNode(MdNodePorts ports, std::atomic<bool>& running, RuntimeCounters& stats, u16 trace_thread_idx);
   void run();
 
 private:
-  MdPorts ports_;
+  MdNodePorts ports_;
   std::atomic<bool>& running_;
-  RuntimeStats& stats_;
+  RuntimeCounters& stats_;
   u16 trace_thread_idx_;
 };
 
 class StratNode {
 public:
-  StratNode(StratPorts ports, std::atomic<bool>& running, RuntimeStats& stats, u64 order_every_n_ticks, u16 trace_thread_idx);
+  StratNode(
+      StrategyNodePorts ports,
+      std::atomic<bool>& running,
+      RuntimeCounters& stats,
+      u64 order_every_n_ticks,
+      u16 trace_thread_idx);
   void run();
 
 private:
-  StratPorts ports_;
+  StrategyNodePorts ports_;
   std::atomic<bool>& running_;
-  RuntimeStats& stats_;
+  RuntimeCounters& stats_;
   u64 order_every_n_ticks_;
   u16 trace_thread_idx_;
 };
 
 class OrNode {
 public:
-  OrNode(OrPorts ports, std::atomic<bool>& running, RuntimeStats& stats, u16 trace_thread_idx);
+  OrNode(OrderRouterNodePorts ports, std::atomic<bool>& running, RuntimeCounters& stats, u16 trace_thread_idx);
   void run();
 
 private:
-  OrPorts ports_;
+  OrderRouterNodePorts ports_;
   std::atomic<bool>& running_;
-  RuntimeStats& stats_;
+  RuntimeCounters& stats_;
   u16 trace_thread_idx_;
 };
 

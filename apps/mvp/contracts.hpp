@@ -22,19 +22,19 @@ enum class Contract : u16 {
 };
 
 enum class NodeId : u16 {
-  Driver = 1,
-  Md = 2,
-  Strat = 3,
-  Or = 4,
+  Ingress = 0,
+  Md = 1,
+  Strat = 2,
+  Or = 3,
 };
 
-struct Tick {
+struct TickEnvelope {
   u64 seq;
   u64 ts_ns;
   tlog::carrier ctx;
 };
 
-struct OrderReq {
+struct OrderReqEnvelope {
   u32 order_id;
   u32 instr_id;
   u64 send_ts_ns;
@@ -45,7 +45,7 @@ struct OrderReq {
   u8 pad[3];
 };
 
-struct OrderAck {
+struct OrderAckEnvelope {
   u32 order_id;
   u64 origin_ts_ns;
   tlog::carrier ctx;
@@ -53,8 +53,8 @@ struct OrderAck {
   u8 pad[3];
 };
 
-static_assert(std::is_standard_layout_v<Tick> && std::is_trivially_copyable_v<Tick>);
-static_assert(std::is_standard_layout_v<OrderReq> && std::is_trivially_copyable_v<OrderReq>);
-static_assert(std::is_standard_layout_v<OrderAck> && std::is_trivially_copyable_v<OrderAck>);
+static_assert(std::is_standard_layout_v<TickEnvelope> && std::is_trivially_copyable_v<TickEnvelope>);
+static_assert(std::is_standard_layout_v<OrderReqEnvelope> && std::is_trivially_copyable_v<OrderReqEnvelope>);
+static_assert(std::is_standard_layout_v<OrderAckEnvelope> && std::is_trivially_copyable_v<OrderAckEnvelope>);
 
 }  // namespace magus2::mvp

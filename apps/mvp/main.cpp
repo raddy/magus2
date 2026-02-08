@@ -1,5 +1,5 @@
 #include <mvp/logging.hpp>
-#include <mvp/runtime.hpp>
+#include <mvp/harness.hpp>
 
 #include <chrono>
 #include <iostream>
@@ -7,26 +7,18 @@
 int main() {
   using namespace magus2::mvp;
 
-  logging::start();
-
-  MvpConfig config;
-  config.ingress_depth = 64;
-  config.tick_depth = 64;
-  config.order_depth = 32;
-  config.ack_depth = 32;
-  config.tick_interval_us = 50;
-  config.order_every_n_ticks = 8;
-
-  const RunResult result = run_for(std::chrono::milliseconds(500), config);
+  const magus2::infra::app::HostHooks hooks {
+      .setup = []() { logging::start(); },
+      .teardown = []() { logging::stop(); },
+  };
+  const RunResult result = run_for(std::chrono::milliseconds(500), MvpConfig {}, hooks);
 
   if (!result.built) {
     std::cerr << "mvp topology build failed: " << result.error << '\n';
-    logging::stop();
     return 1;
   }
   if (!result.started) {
     std::cerr << "mvp runtime start failed: " << result.error << '\n';
-    logging::stop();
     return 1;
   }
 
@@ -47,10 +39,8 @@ int main() {
 
   if (!flow_looks_valid(result.stats)) {
     std::cerr << "mvp flow validation failed\n";
-    logging::stop();
     return 2;
   }
 
-  logging::stop();
   return 0;
 }

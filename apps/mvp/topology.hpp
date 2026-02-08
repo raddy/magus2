@@ -2,12 +2,13 @@
 
 #include "mvp/contracts.hpp"
 
+#include <infra/types/short_types.hpp>
 #include <infra/topology/spec.hpp>
-
-#include <cstddef>
 
 namespace magus2::mvp {
 
+// App-specific boundary: this file declares the MVP graph (nodes + edges + depths + cores).
+// infra::topology::Topology itself stays generic.
 struct MvpConfig {
   infra::u32 md_core {0};
   infra::u32 strat_core {1};
@@ -17,6 +18,7 @@ struct MvpConfig {
   std::size_t tick_depth {64};
   std::size_t order_depth {32};
   std::size_t ack_depth {32};
+  std::size_t queue_arena_bytes {1U << 20U};
 
   infra::u64 tick_interval_us {50};
   infra::u64 order_every_n_ticks {8};
@@ -31,89 +33,63 @@ struct MvpConfig {
 }
 
 inline infra::topology::Topology make_topology(const MvpConfig& cfg) {
-  using infra::topology::Direction;
-  using infra::topology::EdgeSpec;
-  using infra::topology::NodeSpec;
-  using infra::topology::PortSpec;
-  using infra::topology::Topology;
+  using infra::topology::edge_spec;
+  using infra::topology::make_topology;
+  using infra::topology::node_spec;
+  using infra::topology::rx_port;
+  using infra::topology::tx_port;
 
-  Topology topology;
-
-  topology.nodes.push_back(NodeSpec {
-      .id = to_node_id(NodeId::Driver),
-      .name = "driver",
-      .core = 0,
-      .ports = {{"tick_tx", Direction::Tx, to_contract_id(Contract::Tick), true}},
-  });
-
-  topology.nodes.push_back(NodeSpec {
-      .id = to_node_id(NodeId::Md),
-      .name = "md",
-      .core = cfg.md_core,
-      .ports = {
-          {"tick_rx", Direction::Rx, to_contract_id(Contract::Tick), true},
-          {"tick_tx", Direction::Tx, to_contract_id(Contract::Tick), true},
+  return make_topology(
+      {
+          node_spec(
+              to_node_id(NodeId::Md),
+              "md",
+              cfg.md_core,
+              {rx_port("tick_rx", to_contract_id(Contract::Tick)), tx_port("tick_tx", to_contract_id(Contract::Tick))}),
+          node_spec(
+              to_node_id(NodeId::Strat),
+              "strat",
+              cfg.strat_core,
+              {rx_port("tick_rx", to_contract_id(Contract::Tick)),
+                  tx_port("order_tx", to_contract_id(Contract::OrderReq)),
+                  rx_port("ack_rx", to_contract_id(Contract::OrderAck))}),
+          node_spec(
+              to_node_id(NodeId::Or),
+              "or",
+              cfg.or_core,
+              {rx_port("order_rx", to_contract_id(Contract::OrderReq)),
+                  tx_port("ack_tx", to_contract_id(Contract::OrderAck))}),
       },
-  });
-
-  topology.nodes.push_back(NodeSpec {
-      .id = to_node_id(NodeId::Strat),
-      .name = "strat",
-      .core = cfg.strat_core,
-      .ports = {
-          {"tick_rx", Direction::Rx, to_contract_id(Contract::Tick), true},
-          {"order_tx", Direction::Tx, to_contract_id(Contract::OrderReq), true},
-          {"ack_rx", Direction::Rx, to_contract_id(Contract::OrderAck), true},
-      },
-  });
-
-  topology.nodes.push_back(NodeSpec {
-      .id = to_node_id(NodeId::Or),
-      .name = "or",
-      .core = cfg.or_core,
-      .ports = {
-          {"order_rx", Direction::Rx, to_contract_id(Contract::OrderReq), true},
-          {"ack_tx", Direction::Tx, to_contract_id(Contract::OrderAck), true},
-      },
-  });
-
-  topology.edges.push_back(EdgeSpec {
-      .from = to_node_id(NodeId::Driver),
-      .from_port = "tick_tx",
-      .to = to_node_id(NodeId::Md),
-      .to_port = "tick_rx",
-      .contract = to_contract_id(Contract::Tick),
-      .depth = cfg.ingress_depth,
-  });
-
-  topology.edges.push_back(EdgeSpec {
-      .from = to_node_id(NodeId::Md),
-      .from_port = "tick_tx",
-      .to = to_node_id(NodeId::Strat),
-      .to_port = "tick_rx",
-      .contract = to_contract_id(Contract::Tick),
-      .depth = cfg.tick_depth,
-  });
-
-  topology.edges.push_back(EdgeSpec {
-      .from = to_node_id(NodeId::Strat),
-      .from_port = "order_tx",
-      .to = to_node_id(NodeId::Or),
-      .to_port = "order_rx",
-      .contract = to_contract_id(Contract::OrderReq),
-      .depth = cfg.order_depth,
-  });
-
-  topology.edges.push_back(EdgeSpec {
-      .from = to_node_id(NodeId::Or),
-      .from_port = "ack_tx",
-      .to = to_node_id(NodeId::Strat),
-      .to_port = "ack_rx",
-      .contract = to_contract_id(Contract::OrderAck),
-      .depth = cfg.ack_depth,
-  });
-
-  return topology;
+      {
+          edge_spec(
+              to_node_id(NodeId::Ingress),
+              "ingress_tick_tx",
+              to_node_id(NodeId::Md),
+              "tick_rx",
+              to_contract_id(Contract::Tick),
+              cfg.ingress_depth),
+          edge_spec(
+              to_node_id(NodeId::Md),
+              "tick_tx",
+              to_node_id(NodeId::Strat),
+              "tick_rx",
+              to_contract_id(Contract::Tick),
+              cfg.tick_depth),
+          edge_spec(
+              to_node_id(NodeId::Strat),
+              "order_tx",
+              to_node_id(NodeId::Or),
+              "order_rx",
+              to_contract_id(Contract::OrderReq),
+              cfg.order_depth),
+          edge_spec(
+              to_node_id(NodeId::Or),
+              "ack_tx",
+              to_node_id(NodeId::Strat),
+              "ack_rx",
+              to_contract_id(Contract::OrderAck),
+              cfg.ack_depth),
+      });
 }
 
 }  // namespace magus2::mvp
